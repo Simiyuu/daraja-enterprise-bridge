@@ -281,7 +281,7 @@ class DarajaEnterpriseBridge:
         raw_body: bytes,
         remote_addr: Optional[str] = None,
         auto_settle: bool = True,
-    ) -> NormalizedCallback:
+    ) -> Optional[NormalizedCallback]:
         """Process incoming callback, dispatch events, and post atomic double-entry settlement."""
         response = _call_process_callback(
             self.webhook_handler,
@@ -290,6 +290,9 @@ class DarajaEnterpriseBridge:
             remote_addr=remote_addr,
         )
 
+        if getattr(response, "is_duplicate", False):
+            return None
+
         callback = (
             response.normalized_callback
             if hasattr(response, "normalized_callback") and response.normalized_callback is not None
@@ -297,7 +300,7 @@ class DarajaEnterpriseBridge:
         )
 
         if not isinstance(callback, NormalizedCallback):
-            raise ValueError(f"Webhook processing did not yield a NormalizedCallback: {response}")
+            return None
 
         self.dispatcher.dispatch(callback)
 
@@ -317,6 +320,7 @@ class DarajaEnterpriseBridge:
                 )
 
         return callback
+    
 
     def reverse_payment(
         self,
