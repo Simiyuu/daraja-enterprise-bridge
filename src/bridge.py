@@ -96,6 +96,41 @@ def _call_process_callback(
     return handler.process_callback(**kwargs)
 
 
+def _create_client(config: BridgeConfig) -> DarajaClient:
+    """Safely construct DarajaClient matching signature parameter names."""
+    sig = inspect.signature(DarajaClient.__init__)
+    param_map = {
+        "consumer_key": config.consumer_key,
+        "consumer_secret": config.consumer_secret,
+        "passkey": config.passkey,
+        "business_short_code": config.shortcode,
+        "shortcode": config.shortcode,
+        "callback_url": config.callback_url,
+        "call_back_url": config.callback_url,
+        "environment": config.environment,
+        "timeout": config.api_timeout_seconds,
+        "api_timeout_seconds": config.api_timeout_seconds,
+    }
+    kwargs = {}
+    for name, param in sig.parameters.items():
+        if name in ("self", "args", "kwargs"):
+            continue
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if name in param_map:
+            kwargs[name] = param_map[name]
+
+    try:
+        return DarajaClient(**kwargs)
+    except Exception:
+        return DarajaClient(
+            consumer_key=config.consumer_key,
+            consumer_secret=config.consumer_secret,
+            passkey=config.passkey,
+            business_short_code=config.shortcode,
+        )
+
+
 class DarajaEnterpriseBridge:
     """Unified entry point orchestrating all M-Pesa gateway operations."""
 
@@ -131,28 +166,7 @@ class DarajaEnterpriseBridge:
         )
 
         # 3. Telco Client
-        if client is not None:
-            self.client = client
-        else:
-            try:
-                self.client = DarajaClient(
-                    consumer_key=config.consumer_key,
-                    consumer_secret=config.consumer_secret,
-                    passkey=config.passkey,
-                    shortcode=config.shortcode,
-                    callback_url=config.callback_url,
-                    environment=config.environment,
-                    timeout=config.api_timeout_seconds,
-                )
-            except TypeError:
-                try:
-                    self.client = DarajaClient(
-                        consumer_key=config.consumer_key,
-                        consumer_secret=config.consumer_secret,
-                        environment=config.environment,
-                    )
-                except TypeError:
-                    self.client = DarajaClient(config=config)
+        self.client = client if client is not None else _create_client(config)
 
         # 4. Fraud Interception Switch
         self.fraud_interceptor = fraud_interceptor or FraudInterceptor()
@@ -352,3 +366,4 @@ class DarajaEnterpriseBridge:
             hour_of_day=hour_of_day,
             record_state=False,
         )
+    
